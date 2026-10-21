@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // Relations
+  orders    Order[]
+  tickets   SupportTicket[]
+  sentMessages SupportMessage[] @relation("SenderMessages")
+  receivedMessages SupportMessage[] @relation("ReceiverMessages")
+  auditLogs   AuditLog[] @relation("AuditLogs")
+  notifications Notification[] @relation("Notifications")
+  orderEvents OrderEvent[] @relation("ActorEvents")
+}
+
+enum Role {
+  CUSTOMER
+  SUPPORT
+  ADMIN
+  SUPERADMIN
+}
+
+model ServicePackage {
+  id          String   @id @default(uuid())
+  name        String
+  duration    Int // days
+  price       Int // in IDR
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orders      Order[]
+}
+
+model ImeiCheck {
+  id          String   @id @default(uuid())
+  imei        String   @unique
+  result      String?
+  checkedAt   DateTime @default(now())
+  orders      Order[]
+}
+
+model Order {
+  id            String   @id @default(uuid())
+  profileId     String
+  packageId     String
+  imeiCheckId   String?
+  status        OrderStatus @default(PENDING)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile       Profile @relation(fields: [profileId], references: [id])
+  package       ServicePackage @relation(fields: [packageId], references: [id])
+  imeiCheck    ImeiCheck? @relation(fields: [imeiCheckId], references: [id])
+  events        OrderEvent[]
+  payment       Payment?
+  serviceRecord ServiceRecord?
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+model OrderEvent {
+  id        String @id @default(uuid())
+  orderId   String
+  actorId   String // profile id of who performed the action
+  fromStatus OrderStatus
+  toStatus   OrderStatus
+  createdAt DateTime @default(now())
+
+  order     Order @relation(fields: [orderId], references: [id])
+  actor     Profile @relation("ActorEvents", fields: [actorId], references: [id])
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  orderId     String @unique
+  status      PaymentStatus @default(UNPAID)
+  amount      Int
+  proofUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order       Order @relation(fields: [orderId], references: [id])
+  proof       PaymentProof?
+}
+
+enum PaymentStatus {
+  UNPAID
+  PROOF_SUBMITTED
+  VERIFIED
+  REJECTED
+  REFUNDED
+}
+
+model PaymentProof {
+  id        String @id @default(uuid())
+  paymentId String @unique
+  url       String
+  uploadedAt DateTime @default(now())
+
+  payment   Payment @relation(fields: [paymentId], references: [id])
+}
+
+model ServiceRecord {
+  id           String @id @default(uuid())
+  orderId      String @unique
+  status       ServiceStatus @default(NOT_STARTED)
+  providerResponse Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  order        Order @relation(fields: [orderId], references: [id])
+}
+
+enum ServiceStatus {
+  NOT_STARTED
+  AWAITING_PROVIDER
+  IN_PROGRESS
+  SUCCEEDED
+  FAILED
+  UNAVAILABLE
+}
+
+model ProviderConfig {
+  id          String @id @default(uuid())
+  name        String
+  apiKey      String?
+  endpoint    String?
+  configJson  Json?
+  createdAt   DateTime @default(now())
+}
+
+model SupportTicket {
+  id          String @id @default(uuid())
+  profileId   String
+  subject     String
+  status      TicketStatus @default(OPEN)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  profile     Profile @relation(fields: [profileId], references: [id])
+  messages    SupportMessage[]
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportMessage {
+  id          String @id @default(uuid())
+  ticketId    String
+  senderId    String
+  receiverId  String?
+  content     String
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id])
+  sender      Profile @relation("SenderMessages", fields: [senderId], references: [id])
+  receiver    Profile? @relation("ReceiverMessages", fields: [receiverId], references: [id])
+}
+
+model AuditLog {
+  id          String @id @default(uuid())
+  actorId     String
+  action      String
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  actor       Profile @relation("AuditLogs", fields: [actorId], references: [id])
+}
+
+model Notification {
+  id          String @id @default(uuid())
+  profileId   String
+  title       String
+  body        String
+  read        Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  profile     Profile @relation("Notifications", fields: [profileId], references: [id])
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}
